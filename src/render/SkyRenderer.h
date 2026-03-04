@@ -51,9 +51,12 @@ private:
 
   SimpleTexture m_sunTex;
   SimpleTexture m_moonTex;
+  SimpleTexture m_moonPhasesTex;
   SimpleTexture m_cloudsTex;
 
   uint32_t getSkyColor(float timeOfDay);
   bool getSunriseColor(float timeOfDay, float *outColor);
   float getStarBrightness(float timeOfDay);
+  int getMoonPhase(float timeOfDay);
+  float getBrightness(float timeOfDay);
 };

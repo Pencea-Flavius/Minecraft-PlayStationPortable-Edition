@@ -189,6 +189,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level), m_cloudOffset(0.0f) {
 
   m_sunTex.load("res/sun.png");
   m_moonTex.load("res/moon.png");
+  m_moonPhasesTex.load("res/moon_phases.png");
   m_cloudsTex.load("res/clouds.png");
 }
 
@@ -201,15 +202,23 @@ SkyRenderer::~SkyRenderer() {
 }
 
 uint32_t SkyRenderer::getSkyColor(float timeOfDay) {
-  float br = cosf(timeOfDay * PI * 2.0f) * 2.0f + 0.5f;
+  // Compute a sky brightness based on sun angle (same as 4J)
+  // celestialAngle maps 0=dawn, 0.25=noon, 0.5=dusk, 0.75=midnight
+  float celestialAngle =
+      timeOfDay; // already pre-computed by Level::getTimeOfDay
+  float f = cosf(celestialAngle * PI * 2.0f);
+
+  // Brightness: peaks at noon, lowest at midnight
+  float br = f * 2.0f + 0.5f;
   if (br < 0.0f)
     br = 0.0f;
   if (br > 1.0f)
     br = 1.0f;
 
+  // Daytime sky blue, fades to deep dark blue at night (never pure black)
   float r = 0.4039f * br;
   float g = 0.6980f * br;
-  float b = 1.0f * br;
+  float b = 0.2f + 0.8f * br; // Keep slight blue even at night
 
   uint8_t R = (uint8_t)(r * 255.0f);
   uint8_t G = (uint8_t)(g * 255.0f);
@@ -218,21 +227,21 @@ uint32_t SkyRenderer::getSkyColor(float timeOfDay) {
 }
 
 bool SkyRenderer::getSunriseColor(float timeOfDay, float *outColor) {
-  float span = 0.4f;
-  float tt = cosf(timeOfDay * PI * 2.0f);
-  float mid = 0.0f;
-  if (tt >= mid - span && tt <= mid + span) {
-    float aa = ((tt - mid) / span) * 0.5f + 0.5f;
-    float mix = 1.0f - (((1.0f - sinf(aa * PI))) * 0.99f);
-    mix = mix * mix;
+  // Use the exact 4J window: only draw sunrise/sunset when
+  // cos(celestialAngle * 2*PI) is in [-0.4, +0.4]
+  // This matches Dimension.cpp's sun angle calculation
+  float f = cosf(timeOfDay * PI * 2.0f);
 
-    float r1 = 0.70f, g1 = 0.20f, b1 = 0.20f;
-    float r2 = 1.00f, g2 = 0.90f, b2 = 0.20f;
+  if (f >= -0.4f && f <= 0.4f) {
+    float f1 = (f - 0.0f) / 0.4f * 0.5f + 0.5f;
+    // Alpha decreases toward zero at window edges (natural fade)
+    float f2 = 1.0f - (1.0f - sinf(f1 * PI)) * 0.99f;
+    f2 = f2 * f2;
 
-    outColor[0] = (aa * (r2 - r1) + r1);
-    outColor[1] = (aa * (g2 - g1) + g1);
-    outColor[2] = (aa * (b2 - b1) + b1);
-    outColor[3] = mix;
+    outColor[0] = f1 * 0.3f + 0.7f;      // R
+    outColor[1] = f1 * f1 * 0.7f + 0.2f; // G
+    outColor[2] = f1 * f1 * 0.0f + 0.2f; // B
+    outColor[3] = f2;                    // Alpha
     return true;
   }
   return false;
@@ -247,11 +256,32 @@ float SkyRenderer::getStarBrightness(float timeOfDay) {
   return br * br * 0.5f;
 }
 
+// Returns current moon phase 0-7 based on the total elapsed time
+// In Minecraft, moon phases cycle every 8 in-game days
+// timeOfDay is 0.0 -> 1.0, we count full days through m_level's tick
+int SkyRenderer::getMoonPhase(float /*timeOfDay*/) {
+  // Phase 0 = full moon, cycles every 8 in-game days
+  return m_level->getDay() % 8;
+}
+
+// Global sky brightness factor (0 = night, 1 = full day)
+float SkyRenderer::getBrightness(float timeOfDay) {
+  float br = cosf(timeOfDay * PI * 2.0f) * 2.0f + 0.5f;
+  if (br < 0.0f)
+    br = 0.0f;
+  if (br > 1.0f)
+    br = 1.0f;
+  return br;
+}
+
 void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
   float timeOfDay = m_level->getTimeOfDay();
   uint32_t skyCol = getSkyColor(timeOfDay);
 
   sceGuClearColor(skyCol);
+
+  // Update fog color dynamically based on sky brightness
+  sceGuFog(50.0f, 70.0f, skyCol);
 
   // Disable clipping for sky elements since they surround the player
   sceGuDisable(GU_CLIP_PLANES);
@@ -331,15 +361,22 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
   ScePspFVector3 rX = {timeOfDay * PI * 2.0f, 0, 0};
   sceGumRotateX(rX.x);
 
+  // Sun
+  float brightness = getBrightness(timeOfDay);
+  // During night, still show celestial bodies at reduced brightness (0.3
+  // minimum)
+  float celBr = brightness < 0.3f ? 0.3f : brightness;
+  uint8_t cb = (uint8_t)(celBr * 255.0f);
+  uint32_t col32 = 0xFF000000 | (cb << 16) | (cb << 8) | cb;
+
   float s = 30.0f;
-  uint32_t col = 0xFFFFFFFF;
   m_sunTex.bind();
-  m_celestialVertices[0] = {0, 0, col, -s, 100.0f, -s};
-  m_celestialVertices[1] = {1, 0, col, s, 100.0f, -s};
-  m_celestialVertices[2] = {0, 1, col, -s, 100.0f, s};
-  m_celestialVertices[3] = {1, 0, col, s, 100.0f, -s};
-  m_celestialVertices[4] = {1, 1, col, s, 100.0f, s};
-  m_celestialVertices[5] = {0, 1, col, -s, 100.0f, s};
+  m_celestialVertices[0] = {0.0f, 0.0f, col32, -s, 100.0f, -s};
+  m_celestialVertices[1] = {1.0f, 0.0f, col32, s, 100.0f, -s};
+  m_celestialVertices[2] = {0.0f, 1.0f, col32, -s, 100.0f, s};
+  m_celestialVertices[3] = {1.0f, 0.0f, col32, s, 100.0f, -s};
+  m_celestialVertices[4] = {1.0f, 1.0f, col32, s, 100.0f, s};
+  m_celestialVertices[5] = {0.0f, 1.0f, col32, -s, 100.0f, s};
   sceKernelDcacheWritebackInvalidateRange(m_celestialVertices,
                                           6 * sizeof(SkyVertex));
   sceGumDrawArray(GU_TRIANGLES,
@@ -348,14 +385,22 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
                   6, 0, m_celestialVertices);
 
   s = 20.0f;
-  float u0 = 0.0f, v0 = 0.0f, u1 = 0.25f, v1 = 0.5f;
-  m_moonTex.bind();
-  m_celestialVertices[0] = {u1, v1, col, -s, -100.0f, s};
-  m_celestialVertices[1] = {u0, v1, col, s, -100.0f, s};
-  m_celestialVertices[2] = {u1, v0, col, -s, -100.0f, -s};
-  m_celestialVertices[3] = {u0, v1, col, s, -100.0f, s};
-  m_celestialVertices[4] = {u0, v0, col, s, -100.0f, -s};
-  m_celestialVertices[5] = {u1, v0, col, -s, -100.0f, -s};
+  // Moon phases: 4x2 grid (4 columns, 2 rows = 8 phases)
+  // Phase 0 = full moon (col 0, row 0), phase 4 = new moon (col 0, row 1) etc.
+  int moonPhase = getMoonPhase(timeOfDay);
+  int col = moonPhase % 4;
+  int row = moonPhase / 4;
+  float u0 = col * 0.25f; // 1/4 per column
+  float u1 = (col + 1) * 0.25f;
+  float v0 = row * 0.5f; // 1/2 per row
+  float v1 = (row + 1) * 0.5f;
+  m_moonPhasesTex.bind();
+  m_celestialVertices[0] = {u1, v1, col32, -s, -100.0f, s};
+  m_celestialVertices[1] = {u0, v1, col32, s, -100.0f, s};
+  m_celestialVertices[2] = {u1, v0, col32, -s, -100.0f, -s};
+  m_celestialVertices[3] = {u0, v1, col32, s, -100.0f, s};
+  m_celestialVertices[4] = {u0, v0, col32, s, -100.0f, -s};
+  m_celestialVertices[5] = {u1, v0, col32, -s, -100.0f, -s};
   sceKernelDcacheWritebackInvalidateRange(m_celestialVertices,
                                           6 * sizeof(SkyVertex));
   sceGumDrawArray(GU_TRIANGLES,
@@ -385,22 +430,18 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
   sceGuEnable(GU_FOG);
   sceGuDisable(GU_CULL_FACE);
 
-  if (true) { // TODO: hasGround check from Level
-    // Ground color mix
-    float srCol = ((skyCol) & 0xFF) / 255.0f;
-    float sgCol = ((skyCol >> 8) & 0xFF) / 255.0f;
-    float sbCol = ((skyCol >> 16) & 0xFF) / 255.0f;
+  // Bottom plane: dark version of sky color (same as 4J's ground/void
+  // darkening)
+  {
+    float sr = ((skyCol) & 0xFF) / 255.0f;
+    float sg = ((skyCol >> 8) & 0xFF) / 255.0f;
+    float sb = ((skyCol >> 16) & 0xFF) / 255.0f;
 
-    float r = srCol * 0.2f + 0.04f;
-    float g = sgCol * 0.2f + 0.04f;
-    float b = sbCol * 0.6f + 0.1f;
-
-    uint8_t R = (uint8_t)(r * 255.0f);
-    uint8_t G = (uint8_t)(g * 255.0f);
-    uint8_t B = (uint8_t)(b * 255.0f);
+    // 4J mixes the underside as a very dark version of sky color
+    uint8_t R = (uint8_t)(sr * 0.2f * 255.0f);
+    uint8_t G = (uint8_t)(sg * 0.2f * 255.0f);
+    uint8_t B = (uint8_t)(sb * 0.2f * 255.0f);
     sceGuColor(0xFF000000 | (B << 16) | (G << 8) | R);
-  } else {
-    sceGuColor(skyCol);
   }
 
   sceGumPushMatrix();

@@ -5,11 +5,11 @@
 // Basic sceGu wrapper
 
 bool PSPRenderer_Init();
-void PSPRenderer_BeginFrame();
+void PSPRenderer_BeginFrame(uint32_t skyColor);
 void PSPRenderer_SetCamera(const ScePspFVector3 *eye,
                            const ScePspFVector3 *center);
-                           
-void PSPRenderer_GetViewProjMatrix(ScePspFMatrix4* outVP);
+
+void PSPRenderer_GetViewProjMatrix(ScePspFMatrix4 *outVP);
 
 void PSPRenderer_EndFrame();
 void PSPRenderer_Shutdown();

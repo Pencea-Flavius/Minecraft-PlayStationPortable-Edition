@@ -29,7 +29,7 @@ static void *vrelptr(unsigned int offset) {
 bool PSPRenderer_Init() {
   // Frame buffer: 512*272*4 bytes = 557056 bytes
   g_fbp0 = vrelptr(0);
-  g_fbp1 = vrelptr(512 * 272 * 4);  
+  g_fbp1 = vrelptr(512 * 272 * 4);
   g_zbp = vrelptr(2 * 512 * 272 * 4);
 
   sceGuInit();
@@ -41,9 +41,12 @@ bool PSPRenderer_Init() {
   sceGuDepthBuffer((void *)(2 * 512 * 272 * 4), BUF_WIDTH);
 
   sceGuOffset(2048 - (SCR_WIDTH / 2), 2048 - (SCR_HEIGHT / 2));
-  // Overscan hack: Add 4 pixels to viewport to hide rasterizer gaps at the screen edge
-  sceGuViewport(2048, 2048, SCR_WIDTH + 4, SCR_HEIGHT + 4); 
-  sceGuDepthRange(50000, 10000); // Salvarea hardware clipper-ului de la overflow (Lamecraft hack)
+  // Overscan hack: Add 4 pixels to viewport to hide rasterizer gaps at the
+  // screen edge
+  sceGuViewport(2048, 2048, SCR_WIDTH + 4, SCR_HEIGHT + 4);
+  sceGuDepthRange(
+      50000,
+      10000); // Salvarea hardware clipper-ului de la overflow (Lamecraft hack)
 
   // ScissorJKSFJKFDJKFDSJKFDJK
   sceGuScissor(0, 0, SCR_WIDTH, SCR_HEIGHT);
@@ -57,7 +60,7 @@ bool PSPRenderer_Init() {
   sceGuEnable(GU_TEXTURE_2D);
   sceGuTexFunc(GU_TFX_MODULATE, GU_TCC_RGBA); // vertex color * texture = final
   sceGuTexFilter(GU_NEAREST, GU_NEAREST);     // pixel-art style
-  
+
   // Smooth Shading for Ambient Occlusion
   sceGuShadeModel(GU_SMOOTH);
 
@@ -86,14 +89,16 @@ bool PSPRenderer_Init() {
   return true;
 }
 
-void PSPRenderer_BeginFrame() {
+void PSPRenderer_BeginFrame(uint32_t skyColor) {
   sceGuStart(GU_DIRECT, g_list);
 
-  // Minecraft sky blue: R=0x67, G=0xB2, B=0xFF, A=0xFF
-  // sceGu ABGR format (0xAABBGGRR): 0xFF_FF_B2_67 = 0xFFFFB267
-  sceGuClearColor(0xFFFFB267);
+  // Clear to dynamic sky color (updated per-frame by SkyRenderer)
+  sceGuClearColor(skyColor);
   sceGuClearDepth(0);
   sceGuClear(GU_COLOR_BUFFER_BIT | GU_DEPTH_BUFFER_BIT);
+
+  // Update fog to match sky color dynamically
+  sceGuFog(50.0f, 70.0f, skyColor);
 
   // Projection matrix
   sceGumMatrixMode(GU_PROJECTION);
@@ -115,22 +120,23 @@ void PSPRenderer_SetCamera(const ScePspFVector3 *eye,
   // sceGumLookAt does not accept const - const_cast required
   sceGumLookAt(const_cast<ScePspFVector3 *>(eye),
                const_cast<ScePspFVector3 *>(center), &up);
-  sceGumUpdateMatrix(); // IMPORTANT: This ensures the view matrix is mathematically updated before we read it!
+  sceGumUpdateMatrix(); // IMPORTANT: This ensures the view matrix is
+                        // mathematically updated before we read it!
   sceGumMatrixMode(GU_MODEL);
 }
 
-void PSPRenderer_GetViewProjMatrix(ScePspFMatrix4* outVP) {
+void PSPRenderer_GetViewProjMatrix(ScePspFMatrix4 *outVP) {
   ScePspFMatrix4 proj, view;
-  
+
   sceGumMatrixMode(GU_PROJECTION);
   sceGumStoreMatrix(&proj);
-  
+
   sceGumMatrixMode(GU_VIEW);
   sceGumStoreMatrix(&view);
-  
+
   // P * V
   gumMultMatrix(outVP, &proj, &view);
-  
+
   // Restore
   sceGumMatrixMode(GU_MODEL);
 }

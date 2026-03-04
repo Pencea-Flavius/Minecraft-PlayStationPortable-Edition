@@ -128,22 +128,25 @@ static void game_update(float dt) {
   g_player.pitch = Mth::clamp(g_player.pitch, -89.0f, 89.0f);
 
   // Movement with left stick (Analog)
-  float fx = -PSPInput_StickX(0); 
-  float fz = -PSPInput_StickY(0); 
+  float fx = -PSPInput_StickX(0);
+  float fz = -PSPInput_StickY(0);
 
   float yawRad = g_player.yaw * Mth::DEGRAD;
 
   float dx = (fx * Mth::cos(yawRad) + fz * Mth::sin(yawRad)) * moveSpeed;
   float dz = (-fx * Mth::sin(yawRad) + fz * Mth::cos(yawRad)) * moveSpeed;
 
-  const float R = 0.4f;  
-  const float H = 1.75f; 
+  const float R = 0.4f;
+  const float H = 1.75f;
 
   auto isSolid = [&](float px, float py, float pz) -> bool {
     int bx = (int)px, by = (int)py, bz = (int)pz;
-    if (bx < 0 || bx >= WORLD_CHUNKS_X * CHUNK_SIZE_X) return false;
-    if (bz < 0 || bz >= WORLD_CHUNKS_Z * CHUNK_SIZE_Z) return false;
-    if (by < 0 || by >= CHUNK_SIZE_Y) return false;
+    if (bx < 0 || bx >= WORLD_CHUNKS_X * CHUNK_SIZE_X)
+      return false;
+    if (bz < 0 || bz >= WORLD_CHUNKS_Z * CHUNK_SIZE_Z)
+      return false;
+    if (by < 0 || by >= CHUNK_SIZE_Y)
+      return false;
     return g_blockProps[g_level->getBlock(bx, by, bz)].isSolid();
   };
 
@@ -159,7 +162,8 @@ static void game_update(float dt) {
         hitX = true;
     }
     if (hitX) {
-      // FIX CRITIC: Pushes the player back exactly at R distance from the block!
+      // FIX CRITIC: Pushes the player back exactly at R distance from the
+      // block!
       if (dx > 0) {
         g_player.x = floorf(g_player.x + R) - R - 0.001f;
       } else {
@@ -180,7 +184,8 @@ static void game_update(float dt) {
         hitZ = true;
     }
     if (hitZ) {
-      // FIX CRITIC: Pushes the player back exactly at R distance from the block!
+      // FIX CRITIC: Pushes the player back exactly at R distance from the
+      // block!
       if (dz > 0) {
         g_player.z = floorf(g_player.z + R) - R - 0.001f;
       } else {
@@ -262,7 +267,21 @@ static void game_update(float dt) {
 }
 
 static void game_render() {
-  PSPRenderer_BeginFrame();
+  // Compute sky color BEFORE beginning frame so clear color matches sky
+  float _tod = g_level->getTimeOfDay();
+  float _f = cosf(_tod * 3.14159265f * 2.0f);
+  float _br = _f * 2.0f + 0.5f;
+  if (_br < 0.0f)
+    _br = 0.0f;
+  if (_br > 1.0f)
+    _br = 1.0f;
+  uint8_t _R = (uint8_t)(0.4039f * _br * 255.0f);
+  uint8_t _G = (uint8_t)(0.6980f * _br * 255.0f);
+  uint8_t _B = (uint8_t)((0.2f + 0.8f * _br) * 255.0f);
+  uint32_t skyColor =
+      0xFF000000u | ((uint32_t)_B << 16) | ((uint32_t)_G << 8) | _R;
+
+  PSPRenderer_BeginFrame(skyColor);
 
   // Camera setup
   ScePspFVector3 camPos = {g_player.x, g_player.y + 1.6f, g_player.z};
@@ -270,25 +289,24 @@ static void game_render() {
   float pitchRad = g_player.pitch * Mth::DEGRAD;
 
   ScePspFVector3 lookDir = {
-    Mth::sin(yawRad) * Mth::cos(pitchRad), // X
-    Mth::sin(pitchRad),                    // Y
-    Mth::cos(yawRad) * Mth::cos(pitchRad)  // Z 
+      Mth::sin(yawRad) * Mth::cos(pitchRad), // X
+      Mth::sin(pitchRad),                    // Y
+      Mth::cos(yawRad) * Mth::cos(pitchRad)  // Z
   };
 
-  ScePspFVector3 lookAt = {
-    camPos.x + lookDir.x,
-    camPos.y + lookDir.y,
-    camPos.z + lookDir.z
-  };
+  ScePspFVector3 lookAt = {camPos.x + lookDir.x, camPos.y + lookDir.y,
+                           camPos.z + lookDir.z};
 
   PSPRenderer_SetCamera(&camPos, &lookAt);
 
-  if (g_skyRenderer) g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z);
+  if (g_skyRenderer)
+    g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z);
 
   // Render chunks
   g_chunkRenderer->render(g_player.x, g_player.y, g_player.z);
 
-  if (g_skyRenderer) g_skyRenderer->renderClouds(g_player.x, g_player.y, g_player.z, 0.0f);
+  if (g_skyRenderer)
+    g_skyRenderer->renderClouds(g_player.x, g_player.y, g_player.z, 0.0f);
 
   // TODO: HUD (hotbar, crosshair)
 
