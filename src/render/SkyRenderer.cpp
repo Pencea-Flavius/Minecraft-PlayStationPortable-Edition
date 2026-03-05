@@ -68,12 +68,10 @@ void SimpleTexture::bind() {
   sceGuTexFilter(GU_NEAREST, GU_NEAREST);
 }
 
-SkyRenderer::SkyRenderer(Level *level) : m_level(level), m_cloudOffset(0.0f) {
+SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   // Pre-allocate GE-aligned memory for faster hardware drawing
   m_celestialVertices = (SkyVertex *)memalign(
       16, 32 * sizeof(SkyVertex)); // Increase to 32 for sunrise fan
-  m_cloudVertices = (SkyVertex *)memalign(
-      16, 1536 * sizeof(SkyVertex)); // 16 * 16 grid * 6 vertices
 
   int s = 16;
   int d = 16;
@@ -131,7 +129,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level), m_cloudOffset(0.0f) {
     seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
     float z = ((float)seed / (float)0x7FFFFFFF) * 2.0f - 1.0f;
     seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-    float ss = 0.15f + ((float)seed / (float)0x7FFFFFFF) * 0.10f;
+    float ss = 0.04f + ((float)seed / (float)0x7FFFFFFF) * 0.03f;
 
     float d_sq = x * x + y * y + z * z;
     if (d_sq < 1.0f && d_sq > 0.01f) {
@@ -139,9 +137,9 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level), m_cloudOffset(0.0f) {
       x *= id;
       y *= id;
       z *= id;
-      float xp = x * 160.0f;
-      float yp = y * 160.0f;
-      float zp = z * 160.0f;
+      float xp = x * 50.0f;
+      float yp = y * 50.0f;
+      float zp = z * 50.0f;
 
       float yRot = atan2f(x, z);
       float ySin = sinf(yRot);
@@ -190,7 +188,6 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level), m_cloudOffset(0.0f) {
   m_sunTex.load("res/sun.png");
   m_moonTex.load("res/moon.png");
   m_moonPhasesTex.load("res/moon_phases.png");
-  m_cloudsTex.load("res/clouds.png");
 }
 
 SkyRenderer::~SkyRenderer() {
@@ -198,7 +195,6 @@ SkyRenderer::~SkyRenderer() {
   free(m_bottomVertices);
   free(m_starVertices);
   free(m_celestialVertices);
-  free(m_cloudVertices);
 }
 
 uint32_t SkyRenderer::getSkyColor(float timeOfDay) {
@@ -408,16 +404,41 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
                       GU_TRANSFORM_3D,
                   6, 0, m_celestialVertices);
 
-  sceGuDisable(GU_TEXTURE_2D);
-  float starB = getStarBrightness(timeOfDay);
-  if (starB > 0.0f) {
-    uint8_t sb = (uint8_t)(starB * 255.0f);
-    uint32_t sCol = (sb << 24) | (sb << 16) | (sb << 8) | sb;
-    sceGuColor(sCol);
+  // Render stars using Aurora's hardware hack to bypass fog and depth limits
+  float starAlpha = getStarBrightness(timeOfDay);
+  if (starAlpha > 0.0f) {
+    if (starAlpha > 1.0f)
+      starAlpha = 1.0f;
+
+    // Set global opacity (ignored by GU_COLOR_8888, but useful for other
+    // states)
+    uint8_t a = (uint8_t)(starAlpha * 255.0f);
+    sceGuColor(0xFFFFFFFF);
+
+    // Disable depth test and mask to make stars appear at infinity despite
+    // proximity
+    sceGuDisable(GU_DEPTH_TEST);
+    sceGuDepthMask(GU_TRUE);
+
+    // Turn off fog for stars
+    sceGuDisable(GU_FOG);
+
+    // Use GU_FIX blending to multiply vertex alpha by fadeColor
+    sceGuEnable(GU_BLEND);
+    uint32_t fadeColor = (a << 24) | (a << 16) | (a << 8) | a;
+    sceGuBlendFunc(GU_ADD, GU_FIX, GU_FIX, fadeColor, 0xFFFFFFFF);
+
+    sceGuDisable(GU_TEXTURE_2D);
     sceGumDrawArray(GU_TRIANGLES,
                     GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
                         GU_TRANSFORM_3D,
                     m_numStarVertices, 0, m_starVertices);
+
+    // Restore render states for the rest of the scene
+    sceGuEnable(GU_FOG);
+    sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+    sceGuDepthMask(GU_FALSE);
+    sceGuEnable(GU_DEPTH_TEST);
   }
 
   sceGumPopMatrix();
@@ -460,74 +481,5 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
   sceGuDepthMask(GU_FALSE);
   sceGuEnable(GU_CULL_FACE);
   sceGuEnable(GU_TEXTURE_2D);
-  sceGuEnable(GU_FOG);
-}
-
-void SkyRenderer::renderClouds(float playerX, float playerY, float playerZ,
-                               float alpha) {
-  m_cloudOffset += 0.05f;
-  if (m_cloudOffset >= 2048.0f)
-    m_cloudOffset -= 2048.0f;
-
-  float cloudHeight = 120.0f;
-  float scale = 1.0f / 2048.0f;
-  uint32_t cloudColor = 0xAAFFFFFF; // 4J uses ~0.8 alpha
-
-  int d = 16;       // 16x16 grid
-  float qS = 32.0f; // matches 4J 's'
-
-  // Position grid relative to player, but fixed in world space offsets
-  // This keeps the player in the middle of the 'infinite' grid
-  float px = floorf(playerX / qS) * qS;
-  float pz = floorf(playerZ / qS) * qS;
-
-  m_cloudsTex.bind();
-
-  int vIdx = 0;
-  for (int x = -d / 2; x < d / 2; x++) {
-    for (int z = -d / 2; z < d / 2; z++) {
-      float x0 = px + (float)(x * qS);
-      float x1 = x0 + qS;
-      float z0 = pz + (float)(z * qS);
-      float z1 = z0 + qS;
-
-      float u0 = (x0 + m_cloudOffset) * scale;
-      float u1 = (x1 + m_cloudOffset) * scale;
-      float v0 = z1 * scale; // Inverted V logic for 4J mapping
-      float v1 = z0 * scale;
-
-      // Triangle 1
-      m_cloudVertices[vIdx++] = {u0, v1, cloudColor, x0, cloudHeight, z1};
-      m_cloudVertices[vIdx++] = {u1, v1, cloudColor, x1, cloudHeight, z1};
-      m_cloudVertices[vIdx++] = {u1, v0, cloudColor, x1, cloudHeight, z0};
-      // Triangle 2
-      m_cloudVertices[vIdx++] = {u0, v1, cloudColor, x0, cloudHeight, z1};
-      m_cloudVertices[vIdx++] = {u1, v0, cloudColor, x1, cloudHeight, z0};
-      m_cloudVertices[vIdx++] = {u0, v0, cloudColor, x0, cloudHeight, z0};
-    }
-  }
-
-  sceKernelDcacheWritebackInvalidateRange(m_cloudVertices,
-                                          vIdx * sizeof(SkyVertex));
-
-  sceGuDisable(GU_FOG);
-  sceGuDisable(GU_CULL_FACE);
-  sceGuEnable(GU_BLEND);
-  sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
-  sceGuEnable(GU_TEXTURE_2D);
-
-  sceGumMatrixMode(GU_MODEL);
-  sceGumPushMatrix();
-  sceGumLoadIdentity();
-
-  // Single draw call for the entire grid
-  sceGumDrawArray(GU_TRIANGLES,
-                  GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                      GU_TRANSFORM_3D,
-                  vIdx, 0, m_cloudVertices);
-
-  sceGumPopMatrix();
-
-  sceGuEnable(GU_CULL_FACE);
   sceGuEnable(GU_FOG);
 }

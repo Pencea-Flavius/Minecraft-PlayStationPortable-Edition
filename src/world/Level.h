@@ -44,6 +44,8 @@ public:
 
   int getDay() const { return (int)(m_time / TICKS_PER_DAY); }
 
+  long long getTime() const { return m_time; }
+
   void tick() {
     // 4 game ticks per engine frame = ~100 seconds per full day at 60fps
     // Increase for faster testing, decrease for realistic speed

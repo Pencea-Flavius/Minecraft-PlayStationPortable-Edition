@@ -32,7 +32,6 @@ public:
   ~SkyRenderer();
 
   void renderSky(float playerX, float playerY, float playerZ);
-  void renderClouds(float playerX, float playerY, float playerZ, float alpha);
 
 private:
   Level *m_level;
@@ -41,18 +40,14 @@ private:
   SkyPosVertex *m_bottomVertices;
   SkyVertex *m_starVertices;
   SkyVertex *m_celestialVertices;
-  SkyVertex *m_cloudVertices;
 
   int m_numSkyVertices;
   int m_numBottomVertices;
   int m_numStarVertices;
 
-  float m_cloudOffset;
-
   SimpleTexture m_sunTex;
   SimpleTexture m_moonTex;
   SimpleTexture m_moonPhasesTex;
-  SimpleTexture m_cloudsTex;
 
   uint32_t getSkyColor(float timeOfDay);
   bool getSunriseColor(float timeOfDay, float *outColor);

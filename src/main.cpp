@@ -11,6 +11,7 @@
 
 #include "input/PSPInput.h"
 #include "render/ChunkRenderer.h"
+#include "render/CloudRenderer.h"
 #include "render/PSPRenderer.h"
 #include "render/SkyRenderer.h"
 #include "render/TextureAtlas.h"
@@ -60,6 +61,7 @@ struct PlayerState {
 static PlayerState g_player;
 static Level *g_level = nullptr;
 static SkyRenderer *g_skyRenderer = nullptr;
+static CloudRenderer *g_cloudRenderer = nullptr;
 static ChunkRenderer *g_chunkRenderer = nullptr;
 static TextureAtlas *g_atlas = nullptr;
 
@@ -87,6 +89,7 @@ static bool game_init() {
 
   g_level = new Level();
   g_skyRenderer = new SkyRenderer(g_level);
+  g_cloudRenderer = new CloudRenderer(g_level);
 
   // Init chunk renderer
   g_chunkRenderer = new ChunkRenderer(g_atlas);
@@ -305,8 +308,8 @@ static void game_render() {
   // Render chunks
   g_chunkRenderer->render(g_player.x, g_player.y, g_player.z);
 
-  if (g_skyRenderer)
-    g_skyRenderer->renderClouds(g_player.x, g_player.y, g_player.z, 0.0f);
+  if (g_cloudRenderer)
+    g_cloudRenderer->renderClouds(g_player.x, g_player.y, g_player.z, 0.0f);
 
   // TODO: HUD (hotbar, crosshair)
 

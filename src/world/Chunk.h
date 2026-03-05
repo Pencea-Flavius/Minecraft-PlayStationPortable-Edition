@@ -5,7 +5,7 @@
 
 // Vertex format for sceGu (texture + color)
 struct CraftPSPVertex {
-  float u, v;     
+  float u, v;
   uint32_t color;
   float x, y, z;
 };
@@ -13,11 +13,11 @@ struct CraftPSPVertex {
 struct Chunk {
   uint8_t blocks[CHUNK_SIZE_X][CHUNK_SIZE_Z][CHUNK_SIZE_Y];
   uint8_t light[CHUNK_SIZE_X][CHUNK_SIZE_Z][CHUNK_SIZE_Y];
-  int cx, cz; 
+  int cx, cz;
 
   CraftPSPVertex *meshVertices;
   int trienglesCount;
-  bool dirty; 
+  bool dirty;
 
   Chunk();
   ~Chunk();

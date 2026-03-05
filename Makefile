@@ -28,6 +28,7 @@ SRCS = src/main.cpp \
        src/render/Tesselator.cpp \
        src/render/TileRenderer.cpp \
        src/render/SkyRenderer.cpp \
+       src/render/CloudRenderer.cpp \
        src/math/Frustum.cpp \
        src/input/PSPInput.cpp
 
