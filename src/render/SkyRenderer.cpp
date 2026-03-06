@@ -1,5 +1,6 @@
 #include "SkyRenderer.h"
 #include "../stb_image.h"
+#include "../world/Random.h"
 #include <cstring>
 #include <malloc.h>
 #include <math.h>
@@ -120,16 +121,20 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
 
   // Build stars
   int starIdx = 0;
-  int seed = 10842;
+  Random random(
+      10842); // Inițializează generatorul exact cu seed-ul din Minecraft
+
   for (int i = 0; i < 1500; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-    float x = ((float)seed / (float)0x7FFFFFFF) * 2.0f - 1.0f;
-    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-    float y = ((float)seed / (float)0x7FFFFFFF) * 2.0f - 1.0f;
-    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-    float z = ((float)seed / (float)0x7FFFFFFF) * 2.0f - 1.0f;
-    seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-    float ss = 0.04f + ((float)seed / (float)0x7FFFFFFF) * 0.03f;
+    // Obținem coordonatele folosind clasa Random care reproduce comportamentul
+    // din Java
+    float x = random.nextFloat() * 2.0f - 1.0f;
+    float y = random.nextFloat() * 2.0f - 1.0f;
+    float z = random.nextFloat() * 2.0f - 1.0f;
+
+    // Dimensiunea stelei (0.15f + 0.1f este mai apropiat de vanilla, dar poți
+    // păstra valorile tale mici de 0.04f + 0.03f dacă dorești pentru ecranul
+    // PSP)
+    float ss = 0.15f + random.nextFloat() * 0.1f;
 
     float d_sq = x * x + y * y + z * z;
     if (d_sq < 1.0f && d_sq > 0.01f) {
@@ -137,9 +142,12 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       x *= id;
       y *= id;
       z *= id;
-      float xp = x * 50.0f;
-      float yp = y * 50.0f;
-      float zp = z * 50.0f;
+
+      // Minecraft vanilla folosește 100.0f ca distanță, dar 50.0f din codul tău
+      // e ok pentru PSP
+      float xp = x * 100.0f;
+      float yp = y * 100.0f;
+      float zp = z * 100.0f;
 
       float yRot = atan2f(x, z);
       float ySin = sinf(yRot);
@@ -149,8 +157,8 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       float xSin = sinf(xRot);
       float xCos = cosf(xRot);
 
-      seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
-      float zRot = ((float)seed / (float)0x7FFFFFFF) * PI * 2.0f;
+      // Rotația pe axa Z
+      float zRot = random.nextFloat() * PI * 2.0f;
       float zSin = sinf(zRot);
       float zCos = cosf(zRot);
 
