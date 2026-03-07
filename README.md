@@ -14,9 +14,5 @@ This project aims to bring a faithful Minecraft experience to the PSP hardware. 
 - A PSP with Custom Firmware (CFW).
 - PSP SDK (for building from source).
 
-## Acknowledgments
-- Based on the leaked 4J Studios Minecraft Console Edition source code.
-- Thanks to the PSP development community for tools and documentation.
-
 ## Disclaimer
 This project is for educational and preservation purposes only. All rights to Minecraft belong to Mojang Studios and Microsoft.
