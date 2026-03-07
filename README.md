@@ -3,7 +3,7 @@
 This is a port of Minecraft for the PlayStation Portable (PSP).
 
 ## Overview
-This project aims to bring a faithful Minecraft experience to the PSP hardware. It is based on the leaked source code from 4J Studios, the developers behind the console editions of Minecraft.
+This project aims to bring a faithful Minecraft experience to the PSP hardware.
 
 ## Features
 - Classic Minecraft gameplay adapted for PSP.
