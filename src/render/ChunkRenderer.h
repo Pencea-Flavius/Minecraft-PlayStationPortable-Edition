@@ -11,6 +11,8 @@ class Random;
 #include "../world/Chunk.h"
 #include "../world/Level.h"
 
+#include "Tesselator.h"
+
 class ChunkRenderer {
 public:
   ChunkRenderer(TextureAtlas *atlas);
@@ -23,5 +25,14 @@ private:
   Level *m_level;
   TextureAtlas *m_atlas;
 
-  void rebuildChunk(Chunk *c);
+  // Asynchronous Compilation State Machine
+  void processCompileQueue(float camX, float camY, float camZ);
+  int m_compileStep;
+  Chunk *m_compileChunk;
+  int m_compileSy;
+  
+  Tesselator m_opaqueTess;
+  Tesselator m_transTess;
+  Tesselator m_transFancyTess;
+  Tesselator m_emitTess;  // Block-lit (torch) faces, always full brightness
 };

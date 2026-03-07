@@ -50,7 +50,7 @@ Frustum::Intersection Frustum::testAABB(const AABB& box) {
                 for (int c = 0; c < 2; ++c) {
                     // If at least one point is in front (or very close behind)
                     float dist = planes[i].a * x[a] + planes[i].b * y[b] + planes[i].c * z[c] + planes[i].d;
-                    if (dist >= -8.0f) { // Generous padding of 8 blocks
+                    if (dist >= 0.0f) { // Standard frustum test: inside if dist >= 0
                         inCount++;
                     }
                 }

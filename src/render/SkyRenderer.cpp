@@ -49,8 +49,9 @@ void SimpleTexture::load(const char *path) {
     data = memalign(16, p2width * p2height * 4);
     memset(data, 0, p2width * p2height * 4); // Clear to 0 for padding
 
-    for (unsigned int y = 0; y < height; y++) {
-      memcpy((uint32_t *)data + (y * p2width), (uint32_t *)pixels + (y * width),
+    for (unsigned int y = 0; y < (unsigned int)height; y++) {
+      memcpy((uint32_t *)data + (y * p2width),
+             (uint32_t *)pixels + (y * width),
              width * 4);
     }
 
@@ -74,24 +75,30 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   m_celestialVertices = (SkyVertex *)memalign(
       16, 32 * sizeof(SkyVertex)); // Increase to 32 for sunrise fan
 
+  // Generate a mesh for the sky plane matching CloudRenderer voxel size
+  // s = 16 ensures small enough triangles to prevent hardware guard-band overflow on PSP.
+  // d = 32 gives a radius of 512, ensuring it reliably hits the fog max-distance completely.
   int s = 16;
-  int d = 16;
-  m_numSkyVertices = 33 * 33 * 6;    // 6534
-  m_numBottomVertices = 33 * 33 * 6; // 6534
-  m_numStarVertices = 1500 * 6;      // 9000
-
+  int d = 32;
+  m_numSkyVertices = (d * 2) * (d * 2) * 6;
   m_skyVertices =
       (SkyPosVertex *)memalign(16, m_numSkyVertices * sizeof(SkyPosVertex));
+
+  // Generate a mesh for the dark bottom plane (void)
+  m_numBottomVertices = m_numSkyVertices;
   m_bottomVertices =
       (SkyPosVertex *)memalign(16, m_numBottomVertices * sizeof(SkyPosVertex));
+
+  m_numStarVertices = 1500 * 6;      // 9000
   m_starVertices =
       (SkyVertex *)memalign(16, m_numStarVertices * sizeof(SkyVertex));
 
   // Build sky box
   int skyIdx = 0;
   float yy = 16.0f;
-  for (int xx = -s * d; xx <= s * d; xx += s) {
-    for (int zz = -s * d; zz <= s * d; zz += s) {
+  // Note: the loop uses < instead of <= to match the (d*2)*(d*2) vertex count perfectly
+  for (int xx = -s * d; xx < s * d; xx += s) {
+    for (int zz = -s * d; zz < s * d; zz += s) {
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
       m_skyVertices[skyIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
       m_skyVertices[skyIdx++] = {(float)(xx + 0), yy, (float)(zz + s)};
@@ -106,8 +113,8 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   // Build bottom box
   int botIdx = 0;
   yy = -16.0f;
-  for (int xx = -s * d; xx <= s * d; xx += s) {
-    for (int zz = -s * d; zz <= s * d; zz += s) {
+  for (int xx = -s * d; xx < s * d; xx += s) {
+    for (int zz = -s * d; zz < s * d; zz += s) {
       m_bottomVertices[botIdx++] = {(float)(xx + s), yy, (float)(zz + 0)};
       m_bottomVertices[botIdx++] = {(float)(xx + 0), yy, (float)(zz + 0)};
       m_bottomVertices[botIdx++] = {(float)(xx + s), yy, (float)(zz + s)};
@@ -122,18 +129,16 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
   // Build stars
   int starIdx = 0;
   Random random(
-      10842); // Inițializează generatorul exact cu seed-ul din Minecraft
+      10842); // Initialize generator with exact Minecraft seed
 
   for (int i = 0; i < 1500; i++) {
-    // Obținem coordonatele folosind clasa Random care reproduce comportamentul
-    // din Java
+    // Get coordinates using Random class that reproduces Java behavior
     float x = random.nextFloat() * 2.0f - 1.0f;
     float y = random.nextFloat() * 2.0f - 1.0f;
     float z = random.nextFloat() * 2.0f - 1.0f;
 
-    // Dimensiunea stelei (0.15f + 0.1f este mai apropiat de vanilla, dar poți
-    // păstra valorile tale mici de 0.04f + 0.03f dacă dorești pentru ecranul
-    // PSP)
+    // Star size (0.15f + 0.1f is closer to vanilla, but can use smaller
+    // 0.04f + 0.03f for PSP screen if desired)
     float ss = 0.15f + random.nextFloat() * 0.1f;
 
     float d_sq = x * x + y * y + z * z;
@@ -143,8 +148,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       y *= id;
       z *= id;
 
-      // Minecraft vanilla folosește 100.0f ca distanță, dar 50.0f din codul tău
-      // e ok pentru PSP
+      // Vanilla Minecraft uses 100.0f distance, but 50.0f is ok for PSP
       float xp = x * 100.0f;
       float yp = y * 100.0f;
       float zp = z * 100.0f;
@@ -157,7 +161,7 @@ SkyRenderer::SkyRenderer(Level *level) : m_level(level) {
       float xSin = sinf(xRot);
       float xCos = cosf(xRot);
 
-      // Rotația pe axa Z
+      // Z-axis rotation
       float zRot = random.nextFloat() * PI * 2.0f;
       float zSin = sinf(zRot);
       float zCos = cosf(zRot);
@@ -206,28 +210,58 @@ SkyRenderer::~SkyRenderer() {
 }
 
 uint32_t SkyRenderer::getSkyColor(float timeOfDay) {
-  // Compute a sky brightness based on sun angle (same as 4J)
-  // celestialAngle maps 0=dawn, 0.25=noon, 0.5=dusk, 0.75=midnight
-  float celestialAngle =
-      timeOfDay; // already pre-computed by Level::getTimeOfDay
-  float f = cosf(celestialAngle * PI * 2.0f);
+  float f = cosf(timeOfDay * PI * 2.0f);
 
   // Brightness: peaks at noon, lowest at midnight
   float br = f * 2.0f + 0.5f;
-  if (br < 0.0f)
-    br = 0.0f;
-  if (br > 1.0f)
-    br = 1.0f;
+  if (br < 0.0f) br = 0.0f;
+  if (br > 1.0f) br = 1.0f;
 
-  // Daytime sky blue, fades to deep dark blue at night (never pure black)
-  float r = 0.4039f * br;
-  float g = 0.6980f * br;
-  float b = 0.2f + 0.8f * br; // Keep slight blue even at night
+  // Vanilla/4J sky blue: 120, 167, 255
+  float r = 0.47f * br;
+  float g = 0.655f * br;
+  float b = 1.0f  * br;
 
   uint8_t R = (uint8_t)(r * 255.0f);
   uint8_t G = (uint8_t)(g * 255.0f);
   uint8_t B = (uint8_t)(b * 255.0f);
-  return 0xFF000000 | (B << 16) | (G << 8) | R;
+  return 0xFF000000 | ((uint32_t)B << 16) | ((uint32_t)G << 8) | R;
+}
+
+uint32_t SkyRenderer::getFogColor(float timeOfDay, const ScePspFVector3& lookDir) {
+  float f = cosf(timeOfDay * PI * 2.0f);
+  float br = f * 2.0f + 0.5f;
+  if (br < 0.0f) br = 0.0f;
+  if (br > 1.0f) br = 1.0f;
+
+  // Vanilla/4J fog base color: 192, 216, 255
+  float baseR = 0.75f;
+  float baseG = 0.85f;
+  float baseB = 1.0f;
+
+  // Vanilla math: night horizon is never completely black! 
+  // It locks at a minimum dark blue: (R*0.06, G*0.06, B*0.09)
+  float fr = baseR * (br * 0.94f + 0.06f);
+  float fg = baseG * (br * 0.94f + 0.06f);
+  float fb = baseB * (br * 0.91f + 0.09f);
+
+  // Console 2014 sunrise/sunset fog blend
+  float sunV_x = sinf(timeOfDay * PI * 2.0f) > 0.0f ? -1.0f : 1.0f;
+  float d = lookDir.x * sunV_x; // Dot product with pure West/East Vector
+  if (d < 0.0f) d = 0.0f;
+  if (d > 0.0f) {
+    float srColor[4];
+    if (getSunriseColor(timeOfDay, srColor)) {
+      d *= srColor[3]; // Weight by dawn/dusk strength
+      fr = fr * (1.0f - d) + srColor[0] * d;
+      fg = fg * (1.0f - d) + srColor[1] * d;
+      fb = fb * (1.0f - d) + srColor[2] * d;
+    }
+  }
+
+  uint32_t horizonCol = 0xFF000000 | ((uint32_t)(fb * 255.0f) << 16) |
+                        ((uint32_t)(fg * 255.0f) << 8) | (uint32_t)(fr * 255.0f);
+  return horizonCol;
 }
 
 bool SkyRenderer::getSunriseColor(float timeOfDay, float *outColor) {
@@ -242,10 +276,14 @@ bool SkyRenderer::getSunriseColor(float timeOfDay, float *outColor) {
     float f2 = 1.0f - (1.0f - sinf(f1 * PI)) * 0.99f;
     f2 = f2 * f2;
 
-    outColor[0] = f1 * 0.3f + 0.7f;      // R
-    outColor[1] = f1 * f1 * 0.7f + 0.2f; // G
-    outColor[2] = f1 * f1 * 0.0f + 0.2f; // B
-    outColor[3] = f2;                    // Alpha
+    // 4J constants: Dawn Dark (0xB23333) and Dawn Bright (0xFFE533)
+    float r1 = 0.698f, g1 = 0.2f, b1 = 0.2f;   // Dark
+    float r2 = 1.0f, g2 = 0.898f, b2 = 0.2f;   // Bright
+
+    outColor[0] = f1 * (r2 - r1) + r1; // R
+    outColor[1] = f1 * (g2 - g1) + g1; // G
+    outColor[2] = f1 * (b2 - b1) + b1; // B
+    outColor[3] = f2;                  // Alpha
     return true;
   }
   return false;
@@ -278,17 +316,28 @@ float SkyRenderer::getBrightness(float timeOfDay) {
   return br;
 }
 
-void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
+void SkyRenderer::renderSky(float playerX, float playerY, float playerZ, const ScePspFVector3& lookDir) {
   float timeOfDay = m_level->getTimeOfDay();
   uint32_t skyCol = getSkyColor(timeOfDay);
 
-  sceGuClearColor(skyCol);
+  // 4J Fog-based horizon gradient
+  // Calculate fog color incorporating sunrise/sunset blending
+  uint32_t horizonCol = getFogColor(timeOfDay, lookDir);
 
-  // Update fog color dynamically based on sky brightness
-  sceGuFog(50.0f, 70.0f, skyCol);
+  // In Console 2014, the screen is cleared entirely to the fog color, allowing the 
+  // far edges of the sky geometry (at Y=16, spanning up to distance 256) to smoothly
+  // blend into the void/fog with no clipping cuts.
+  sceGuClearColor(horizonCol);
 
-  // Disable clipping for sky elements since they surround the player
-  sceGuDisable(GU_CLIP_PLANES);
+  sceGuFog(40.0f, 120.0f, horizonCol);
+
+  // CRITICAL FIX: To prevent PSP GE hardware guard-band clipping bugs drop-outing
+  // the sky planes when viewed horizontally, push a safer projection matrix with a
+  // farther Near Clip Plane (4.0f).
+  sceGumMatrixMode(GU_PROJECTION);
+  sceGumPushMatrix();
+  sceGumLoadIdentity();
+  sceGumPerspective(70.0f, 480.0f / 272.0f, 4.0f, 2000.0f);
 
   sceGumMatrixMode(GU_MODEL);
   sceGumPushMatrix();
@@ -311,68 +360,30 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
 
   sceGuDisable(GU_FOG);
   sceGuEnable(GU_BLEND);
-  sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
 
-  // Sunrise
-  float srColor[4];
-  if (getSunriseColor(timeOfDay, srColor)) {
-    sceGumPushMatrix();
-    ScePspFVector3 rotFront = {PI / 2.0f, 0, 0};
-    sceGumRotateX(rotFront.x);
-
-    float sunAng = timeOfDay * PI * 2.0f;
-    if (sinf(sunAng) < 0) {
-      ScePspFVector3 r180 = {0, 0, PI};
-      sceGumRotateZ(r180.z);
-    }
-
-    ScePspFVector3 rotFrontZ = {0, 0, PI / 2.0f};
-    sceGumRotateZ(rotFrontZ.z);
-
-    uint8_t R = (uint8_t)(srColor[0] * 255.0f);
-    uint8_t G = (uint8_t)(srColor[1] * 255.0f);
-    uint8_t B = (uint8_t)(srColor[2] * 255.0f);
-    uint8_t A = (uint8_t)(srColor[3] * 255.0f);
-    uint32_t srC1 = (A << 24) | (B << 16) | (G << 8) | R;
-    uint32_t srC2 = (0 << 24) | (B << 16) | (G << 8) | R;
-
-    m_celestialVertices[0] = {0, 0, srC1, 0.0f, 100.0f, 0.0f};
-    int steps = 16;
-    for (int i = 0; i <= steps; i++) {
-      float a = ((float)i * PI * 2.0f) / (float)steps;
-      float _sin = sinf(a);
-      float _cos = cosf(a);
-      m_celestialVertices[i + 1] = {
-          0, 0, srC2, _sin * 120.0f, _cos * 120.0f, -_cos * 40.0f * srColor[3]};
-    }
-    sceKernelDcacheWritebackInvalidateRange(m_celestialVertices,
-                                            (steps + 2) * sizeof(SkyVertex));
-    sceGumDrawArray(GU_TRIANGLE_FAN,
-                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                        GU_TRANSFORM_3D,
-                    steps + 2, 0, m_celestialVertices);
-
-    sceGumPopMatrix();
-  }
-
-  // Sun and Moon
+  // =========================================
+  // 1. Sun and Moon FIRST (additive blending)
+  //    Additive: black bg = 0 added = transparent.
+  //    Bright moon disc saturates to white → stars drawn after cannot exceed white → invisible inside disc!
+  // =========================================
   sceGuEnable(GU_TEXTURE_2D);
+  // Additive blending: treats black pixels as transparent (0 + dst = dst)
   sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_FIX, 0, 0xFFFFFFFF);
   sceGumPushMatrix();
 
-  ScePspFVector3 rY = {0, -PI / 2.0f, 0};
-  sceGumRotateY(rY.y);
-  ScePspFVector3 rX = {timeOfDay * PI * 2.0f, 0, 0};
-  sceGumRotateX(rX.x);
+  // Rotate -90 on Y (matches glRotatef(-90, 0, 1, 0))
+  sceGumRotateY(-PI / 2.0f);
+  // Rotate based on time of day (matches glRotatef(timeOfDay * 360, 1, 0, 0))
+  sceGumRotateX(timeOfDay * PI * 2.0f);
 
-  // Sun
+  sceGuDisable(GU_CULL_FACE);
+
   float brightness = getBrightness(timeOfDay);
-  // During night, still show celestial bodies at reduced brightness (0.3
-  // minimum)
   float celBr = brightness < 0.3f ? 0.3f : brightness;
   uint8_t cb = (uint8_t)(celBr * 255.0f);
   uint32_t col32 = 0xFF000000 | (cb << 16) | (cb << 8) | cb;
 
+  // Sun
   float s = 30.0f;
   m_sunTex.bind();
   m_celestialVertices[0] = {0.0f, 0.0f, col32, -s, 100.0f, -s};
@@ -381,113 +392,88 @@ void SkyRenderer::renderSky(float playerX, float playerY, float playerZ) {
   m_celestialVertices[3] = {1.0f, 0.0f, col32, s, 100.0f, -s};
   m_celestialVertices[4] = {1.0f, 1.0f, col32, s, 100.0f, s};
   m_celestialVertices[5] = {0.0f, 1.0f, col32, -s, 100.0f, s};
-  sceKernelDcacheWritebackInvalidateRange(m_celestialVertices,
-                                          6 * sizeof(SkyVertex));
+  sceKernelDcacheWritebackInvalidateRange(m_celestialVertices, 6 * sizeof(SkyVertex));
   sceGumDrawArray(GU_TRIANGLES,
-                  GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                      GU_TRANSFORM_3D,
+                  GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                   6, 0, m_celestialVertices);
 
+  // Moon
   s = 20.0f;
-  // Moon phases: 4x2 grid (4 columns, 2 rows = 8 phases)
-  // Phase 0 = full moon (col 0, row 0), phase 4 = new moon (col 0, row 1) etc.
-  int moonPhase = getMoonPhase(timeOfDay);
-  int col = moonPhase % 4;
-  int row = moonPhase / 4;
-  float u0 = col * 0.25f; // 1/4 per column
-  float u1 = (col + 1) * 0.25f;
-  float v0 = row * 0.5f; // 1/2 per row
-  float v1 = (row + 1) * 0.5f;
-  m_moonPhasesTex.bind();
-  m_celestialVertices[0] = {u1, v1, col32, -s, -100.0f, s};
-  m_celestialVertices[1] = {u0, v1, col32, s, -100.0f, s};
-  m_celestialVertices[2] = {u1, v0, col32, -s, -100.0f, -s};
-  m_celestialVertices[3] = {u0, v1, col32, s, -100.0f, s};
-  m_celestialVertices[4] = {u0, v0, col32, s, -100.0f, -s};
-  m_celestialVertices[5] = {u1, v0, col32, -s, -100.0f, -s};
-  sceKernelDcacheWritebackInvalidateRange(m_celestialVertices,
-                                          6 * sizeof(SkyVertex));
+  float u0 = 0.0f, u1 = 1.0f, v0 = 0.0f, v1 = 1.0f;
+  if (m_moonPhasesTex.data != nullptr) {
+    int moonPhase = getMoonPhase(timeOfDay);
+    int col = moonPhase % 4;
+    int row = moonPhase / 4;
+    u0 = col * 0.25f;
+    u1 = (col + 1) * 0.25f;
+    v0 = row * 0.5f;
+    v1 = (row + 1) * 0.5f;
+    m_moonPhasesTex.bind();
+  } else {
+    m_moonTex.bind();
+  }
+  m_celestialVertices[6]  = {u1, v1, col32, -s, -100.0f, s};
+  m_celestialVertices[7]  = {u0, v1, col32,  s, -100.0f, s};
+  m_celestialVertices[8]  = {u1, v0, col32, -s, -100.0f, -s};
+  m_celestialVertices[9]  = {u0, v1, col32,  s, -100.0f, s};
+  m_celestialVertices[10] = {u0, v0, col32,  s, -100.0f, -s};
+  m_celestialVertices[11] = {u1, v0, col32, -s, -100.0f, -s};
+  sceKernelDcacheWritebackInvalidateRange(&m_celestialVertices[6], 6 * sizeof(SkyVertex));
   sceGumDrawArray(GU_TRIANGLES,
-                  GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                      GU_TRANSFORM_3D,
-                  6, 0, m_celestialVertices);
+                  GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
+                  6, 0, &m_celestialVertices[6]);
 
-  // Render stars using Aurora's hardware hack to bypass fog and depth limits
+  // Stars drawn INSIDE the celestial rotation matrix so they rotate with the day/night cycle
   float starAlpha = getStarBrightness(timeOfDay);
   if (starAlpha > 0.0f) {
     if (starAlpha > 1.0f)
       starAlpha = 1.0f;
 
-    // Set global opacity (ignored by GU_COLOR_8888, but useful for other
-    // states)
     uint8_t a = (uint8_t)(starAlpha * 255.0f);
-    sceGuColor(0xFFFFFFFF);
-
-    // Disable depth test and mask to make stars appear at infinity despite
-    // proximity
-    sceGuDisable(GU_DEPTH_TEST);
-    sceGuDepthMask(GU_TRUE);
-
-    // Turn off fog for stars
-    sceGuDisable(GU_FOG);
-
-    // Use GU_FIX blending to multiply vertex alpha by fadeColor
-    sceGuEnable(GU_BLEND);
     uint32_t fadeColor = (a << 24) | (a << 16) | (a << 8) | a;
     sceGuBlendFunc(GU_ADD, GU_FIX, GU_FIX, fadeColor, 0xFFFFFFFF);
-
     sceGuDisable(GU_TEXTURE_2D);
+
     sceGumDrawArray(GU_TRIANGLES,
-                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF |
-                        GU_TRANSFORM_3D,
+                    GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D,
                     m_numStarVertices, 0, m_starVertices);
 
-    // Restore render states for the rest of the scene
-    sceGuEnable(GU_FOG);
-    sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
-    sceGuDepthMask(GU_FALSE);
-    sceGuEnable(GU_DEPTH_TEST);
+    sceGuEnable(GU_TEXTURE_2D);
   }
 
-  sceGumPopMatrix();
+  sceGuEnable(GU_CULL_FACE);
+  sceGumPopMatrix(); // Pops celestial rotation
+
+  // Restore render states for the rest of the scene
+  sceGuEnable(GU_FOG);
+  sceGuBlendFunc(GU_ADD, GU_SRC_ALPHA, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+  sceGuDepthMask(GU_FALSE);
+  sceGuEnable(GU_DEPTH_TEST);
 
   // 4J horizon calculation
   // float horizonHeight = 63.0f; // Approx sea level
   // float playerFromHorizon = playerY - horizonHeight;
 
-  sceGuDisable(GU_BLEND);
-  sceGuEnable(GU_FOG);
-  sceGuDisable(GU_CULL_FACE);
+  // We don't need to draw the bottom plane anymore.
+  // The PSP clears the background to `horizonCol` (the fog color).
+  // This causes the void to be perfectly seamless without drawing a buggy black box!
 
-  // Bottom plane: dark version of sky color (same as 4J's ground/void
-  // darkening)
-  {
-    float sr = ((skyCol) & 0xFF) / 255.0f;
-    float sg = ((skyCol >> 8) & 0xFF) / 255.0f;
-    float sb = ((skyCol >> 16) & 0xFF) / 255.0f;
+  sceGumPopMatrix(); // Pops playerPos (MODEL)
 
-    // 4J mixes the underside as a very dark version of sky color
-    uint8_t R = (uint8_t)(sr * 0.2f * 255.0f);
-    uint8_t G = (uint8_t)(sg * 0.2f * 255.0f);
-    uint8_t B = (uint8_t)(sb * 0.2f * 255.0f);
-    sceGuColor(0xFF000000 | (B << 16) | (G << 8) | R);
-  }
-
-  sceGumPushMatrix();
-  ScePspFVector3 downP = {0, -16.0f, 0};
-  sceGumTranslate(&downP);
-  sceGumDrawArray(GU_TRIANGLES, GU_VERTEX_32BITF | GU_TRANSFORM_3D,
-                  m_numBottomVertices, 0, m_bottomVertices);
+  // Restore Projection Matrix
+  sceGumMatrixMode(GU_PROJECTION);
   sceGumPopMatrix();
-
-  sceGumPopMatrix();
+  sceGumMatrixMode(GU_MODEL);
 
   // Restore proper render state for world geometry
-  sceGuEnable(GU_CLIP_PLANES);
   sceGuEnable(GU_DEPTH_TEST);
   sceGuDepthFunc(GU_GEQUAL);
   sceGuDepthMask(GU_FALSE);
   sceGuEnable(GU_CULL_FACE);
   sceGuEnable(GU_TEXTURE_2D);
   sceGuEnable(GU_FOG);
+
+  // CRITICAL: Restore the shorter world fog distances! 
+  // Otherwise chunks will cut off sharply at 64 blocks instead of fading into fog.
+  sceGuFog(40.0f, 64.0f, horizonCol);
 }

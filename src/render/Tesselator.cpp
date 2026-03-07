@@ -1,9 +1,6 @@
 #include "Tesselator.h"
 
-// Singleton instance
-static Tesselator g_tesselator;
 
-Tesselator &Tesselator::getInstance() { return g_tesselator; }
 
 Tesselator::Tesselator()
     : m_buffer(nullptr), m_maxVertices(0), m_vertexCount(0), m_u(0), m_v(0),

@@ -7,8 +7,6 @@ public:
   Tesselator();
   ~Tesselator();
 
-  static Tesselator &getInstance();
-
   void begin(CraftPSPVertex *buffer, int maxVertices);
 
   void color(uint32_t c);

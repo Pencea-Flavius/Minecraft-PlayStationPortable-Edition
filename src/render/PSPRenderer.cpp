@@ -76,8 +76,8 @@ bool PSPRenderer_Init() {
   sceGuAlphaFunc(GU_GREATER, 0x80, 0xFF);
   sceGuEnable(GU_ALPHA_TEST);
 
-  // Fog: Minecraft blue color, distance 50-70 blocks
-  sceGuFog(50.0f, 70.0f, 0xFFFFB267); // ABGR: R=0x67,G=0xB2,B=0xFF -> sky blue
+  // Fog: Minecraft blue color, distance 40-64 blocks
+  sceGuFog(40.0f, 64.0f, 0xFFFFB267); // ABGR: R=0x67,G=0xB2,B=0xFF -> sky blue
   sceGuEnable(GU_FOG);
 
   sceGuFinish();
@@ -98,7 +98,7 @@ void PSPRenderer_BeginFrame(uint32_t skyColor) {
   sceGuClear(GU_COLOR_BUFFER_BIT | GU_DEPTH_BUFFER_BIT);
 
   // Update fog to match sky color dynamically
-  sceGuFog(50.0f, 70.0f, skyColor);
+  sceGuFog(40.0f, 64.0f, skyColor);
 
   // Projection matrix
   sceGumMatrixMode(GU_PROJECTION);

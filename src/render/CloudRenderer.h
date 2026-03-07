@@ -24,6 +24,7 @@ private:
   float m_lastCloudPx;
   float m_lastCloudPz;
   float m_lastCloudSnappedOffset;
+  bool m_lastWasInClouds;
   int m_numCloudVertices;
 
   float m_cloudOffset;

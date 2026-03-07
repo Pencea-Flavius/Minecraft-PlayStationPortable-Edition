@@ -49,10 +49,12 @@ void setup_callbacks() {
 // Simple player state
 // ====================================================
 struct PlayerState {
-  float x, y, z;    // position
-  float yaw, pitch; // camera rotation (degrees)
-  float velY;       // vertical velocity (gravity)
+  float x, y, z;          // position
+  float yaw, pitch;       // camera rotation (degrees)
+  float velY;             // vertical velocity (gravity)
   bool onGround;
+  bool isFlying;          // creative flight active
+  float jumpDoubleTapTimer; // countdown for double-tap detection
 };
 
 // ====================================================
@@ -107,6 +109,8 @@ static bool game_init() {
   g_player.pitch = 0.0f;
   g_player.velY = 0.0f;
   g_player.onGround = false;
+  g_player.isFlying = false;
+  g_player.jumpDoubleTapTimer = 0.0f;
 
   return true;
 }
@@ -120,7 +124,7 @@ static void game_update(float dt) {
     g_level->tick();
   }
 
-  float moveSpeed = 5.0f * dt;
+  float moveSpeed = (g_player.isFlying ? 10.0f : 5.0f) * dt;
   float lookSpeed = 120.0f * dt;
 
   // Rotation with right stick (Face Buttons)
@@ -197,8 +201,16 @@ static void game_update(float dt) {
     }
   }
 
-  // Simple gravity and Y movement
-  if (!g_player.onGround) {
+  // ── Fly mode vertical movement ──────────────────────────────────────────
+  if (g_player.isFlying) {
+    float flySpeed = 10.0f * dt;
+    if (PSPInput_IsHeld(PSP_CTRL_RTRIGGER))
+      g_player.y += flySpeed;  // Ascend
+    if (PSPInput_IsHeld(PSP_CTRL_LTRIGGER))
+      g_player.y -= flySpeed;  // Descend
+    g_player.velY = 0.0f;      // No gravity while flying
+  } else if (!g_player.onGround) {
+    // Normal gravity
     g_player.velY -= 20.0f * dt;
     g_player.y += g_player.velY * dt;
   }
@@ -262,29 +274,30 @@ static void game_update(float dt) {
     }
   }
 
-  // Jump (Lamecraft style: R-Trigger)
-  if (PSPInput_JustPressed(PSP_CTRL_RTRIGGER) && g_player.onGround) {
-    g_player.velY = 6.5f; // jump velocity
-    g_player.onGround = false;
+  // ── Double-tap R-Trigger to toggle fly (Revival-style) ──────────────────
+  static const float DOUBLE_TAP_WINDOW = 0.35f;
+  if (g_player.jumpDoubleTapTimer > 0.0f)
+    g_player.jumpDoubleTapTimer -= dt;
+
+  if (PSPInput_JustPressed(PSP_CTRL_RTRIGGER)) {
+    if (g_player.jumpDoubleTapTimer > 0.0f) {
+      // Second tap within 0.35s → TOGGLE fly mode (enter or exit)
+      g_player.isFlying = !g_player.isFlying;
+      g_player.velY = 0.0f;
+      g_player.jumpDoubleTapTimer = 0.0f;
+    } else {
+      // First tap: normal jump (if on ground and not flying), start double-tap window
+      if (!g_player.isFlying && g_player.onGround) {
+        g_player.velY = 6.5f;
+        g_player.onGround = false;
+      }
+      g_player.jumpDoubleTapTimer = DOUBLE_TAP_WINDOW;
+    }
   }
 }
 
 static void game_render() {
-  // Compute sky color BEFORE beginning frame so clear color matches sky
   float _tod = g_level->getTimeOfDay();
-  float _f = cosf(_tod * 3.14159265f * 2.0f);
-  float _br = _f * 2.0f + 0.5f;
-  if (_br < 0.0f)
-    _br = 0.0f;
-  if (_br > 1.0f)
-    _br = 1.0f;
-  uint8_t _R = (uint8_t)(0.4039f * _br * 255.0f);
-  uint8_t _G = (uint8_t)(0.6980f * _br * 255.0f);
-  uint8_t _B = (uint8_t)((0.2f + 0.8f * _br) * 255.0f);
-  uint32_t skyColor =
-      0xFF000000u | ((uint32_t)_B << 16) | ((uint32_t)_G << 8) | _R;
-
-  PSPRenderer_BeginFrame(skyColor);
 
   // Camera setup
   ScePspFVector3 camPos = {g_player.x, g_player.y + 1.6f, g_player.z};
@@ -300,10 +313,18 @@ static void game_render() {
   ScePspFVector3 lookAt = {camPos.x + lookDir.x, camPos.y + lookDir.y,
                            camPos.z + lookDir.z};
 
+  // Compute clear color (fog color) BEFORE beginning frame
+  uint32_t clearColor = 0xFF000000;
+  if (g_skyRenderer) {
+      clearColor = g_skyRenderer->getFogColor(_tod, lookDir);
+  }
+
+  PSPRenderer_BeginFrame(clearColor);
+
   PSPRenderer_SetCamera(&camPos, &lookAt);
 
   if (g_skyRenderer)
-    g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z);
+    g_skyRenderer->renderSky(g_player.x, g_player.y, g_player.z, lookDir);
 
   // Render chunks
   g_chunkRenderer->render(g_player.x, g_player.y, g_player.z);

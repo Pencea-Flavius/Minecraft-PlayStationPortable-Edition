@@ -1,14 +1,14 @@
 #pragma once
-// NoiseGen.h — Generator de noise 2D cu octave (portare/adaptare ImprovedNoise)
-// Separat de WorldGen pentru claritate, similar cu 4J Studios' structura
+// NoiseGen.h — 2D octave noise generator (ImprovedNoise port/adaptation)
+// Separated from WorldGen for clarity, similar to 4J Studios' structure
 #include <stdint.h>
 
 class NoiseGen {
 public:
-  // Returneaza valoarea de noise la (x, z) cu un seed dat
+  // Returns noise value at (x, z) with a given seed
   static float noise2d(float x, float z, int64_t seed);
 
-  // Noise multi-octave (fractal) — suma de octave la frecvente crescatoare
+  // Multi-octave (fractal) noise — sum of octaves at increasing frequencies
   static float octaveNoise(float x, float z, int64_t seed, int octaves = 4,
                            float persistence = 0.5f);
 };

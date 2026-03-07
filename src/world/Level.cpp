@@ -29,7 +29,7 @@ Chunk* Level::getChunk(int cx, int cz) const {
 
 void Level::markDirty(int cx, int cz) {
   if (cx >= 0 && cx < WORLD_CHUNKS_X && cz >= 0 && cz < WORLD_CHUNKS_Z)
-    m_chunks[cx][cz]->dirty = true;
+    for(int i=0; i<4; i++) m_chunks[cx][cz]->dirty[i] = true;
 }
 
 uint8_t Level::getBlock(int wx, int wy, int wz) const {
@@ -85,7 +85,7 @@ void Level::generate(Random *rng) {
       c->cx = cx;
       c->cz = cz;
       WorldGen::generateChunk(c->blocks, cx, cz, seed);
-      c->dirty = true;
+      for(int i=0; i<4; i++) c->dirty[i] = true;
     }
   }
 

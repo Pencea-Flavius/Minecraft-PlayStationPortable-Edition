@@ -42,17 +42,29 @@ public:
     return td;
   }
 
+  // Returns 0.0 (night) to 1.0 (day) sun brightness
+  float getSunBrightness() const {
+    float td = getTimeOfDay();
+    float br = cosf(td * 3.14159265f * 2.0f) * 2.0f + 0.5f;
+    if (br < 0.0f) br = 0.0f;
+    if (br > 1.0f) br = 1.0f;
+    return br;
+  }
+
+  // Returns the discrete brightness stage the world is currently locked to
+  float getLastSunBrightness() const { return m_lastSunBrightness; }
+
   int getDay() const { return (int)(m_time / TICKS_PER_DAY); }
 
   long long getTime() const { return m_time; }
 
   void tick() {
-    // 4 game ticks per engine frame = ~100 seconds per full day at 60fps
-    // Increase for faster testing, decrease for realistic speed
-    m_time += 4;
+    // Advance time. Day/night is applied at render-time via sceGuAmbient — NO chunk rebuilds needed.
+    m_time += 1; // ~400 seconds per full day at 60fps
   }
 
 private:
   Chunk *m_chunks[WORLD_CHUNKS_X][WORLD_CHUNKS_Z];
   long long m_time = 6000LL; // Start at 6000 = dawn/sunrise
+  float m_lastSunBrightness = 1.0f; // Track sun to trigger rebuilds
 };

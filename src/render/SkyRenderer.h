@@ -31,7 +31,8 @@ public:
   SkyRenderer(Level *level);
   ~SkyRenderer();
 
-  void renderSky(float playerX, float playerY, float playerZ);
+  void renderSky(float playerX, float playerY, float playerZ, const ScePspFVector3& lookDir);
+  uint32_t getFogColor(float timeOfDay, const ScePspFVector3& lookDir);
 
 private:
   Level *m_level;
