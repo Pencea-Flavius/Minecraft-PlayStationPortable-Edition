@@ -31,9 +31,9 @@ float PSPInput_StickX(int idx) {
   // Right stick X simulated with Square/Circle Face buttons
   float v = 0.0f;
   if (g_pad.Buttons & PSP_CTRL_CIRCLE)
-    v += 1.0f; // Look Right
+    v -= 1.0f; // Look Right
   if (g_pad.Buttons & PSP_CTRL_SQUARE)
-    v -= 1.0f; // Look Left
+    v += 1.0f; // Look Left
   return v;
 }
 
@@ -43,9 +43,9 @@ float PSPInput_StickY(int idx) {
   // Right stick Y simulated with Triangle/Cross Face buttons
   float v = 0.0f;
   if (g_pad.Buttons & PSP_CTRL_TRIANGLE)
-    v -= 1.0f; // Look Up
+    v += 1.0f; // Look Up
   if (g_pad.Buttons & PSP_CTRL_CROSS)
-    v += 1.0f; // Look Down
+    v -= 1.0f; // Look Down
   return v;
 }
 
